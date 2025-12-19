@@ -208,3 +208,5 @@ __marimo__/
 all_data/
 results/
 datasets/
+__cache__/
+__pycache__/

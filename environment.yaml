@@ -1,0 +1,20 @@
+name: AbFlow
+channels:
+  - defaults
+dependencies:
+  - bioconda::anarci
+  - bioconda::hmmer
+  - bioconda::lddt
+  - biopython=1.79
+  - cudatoolkit=10.2
+  - mmseqs2
+  - openmm
+  - pdbfixer
+  - pip
+  - python==3.10.14
+  - torchaudio==2.4.1
+  - torchvision==0.19.1
+  - schrodinger::pymol
+  - pytorch-cuda=12.1
+  - fftw
+  - freesasa
