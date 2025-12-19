@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 
-from models.isMEAN.predictor import Predictor
+from models.AbFlow.predictor import Predictor
 from trainer.abs_trainer import Trainer, TrainConfig
 
 

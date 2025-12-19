@@ -14,7 +14,7 @@ TASK="${4:-}"  # 第4个参数
 if [ "$TASK" = "rabd" ]; then
     PEP_ARG="--pep_file all_data/RAbD/test.pkl"
     SURF_ARG="--surf_file all_data/RAbD/test_surf.pkl"
-    SCRIPT="pep_generate.py"
+    SCRIPT="generate.py"
 elif [ "$TASK" = "igfold" ]; then
     PEP_ARG="--pep_file all_data/IgFold/test.pkl"
     SURF_ARG="--surf_file all_data/IgFold/test_surf.pkl"
@@ -23,18 +23,18 @@ elif [ -n "$TASK" ]; then
     # 如果不是预设值，当作自定义路径前缀
     PEP_ARG="--pep_file ${TASK}"
     SURF_ARG="--surf_file ${TASK}"
-    SCRIPT="pep_generate.py"
+    SCRIPT="generate.py"
 else
     PEP_ARG=""
     SURF_ARG=""
-    SCRIPT="pep_generate.py"
+    SCRIPT="generate.py"
 fi
 ######### end of adjust ##########
 
 # validity check
 if [ -z "$CKPT" ]; then
 	echo "Usage: bash $0 <checkpoint> <test set> [save_dir] [task]"
-	echo "  task: rabd (pep_generate.py), igfold (struct_generate.py), or custom path"
+	echo "  task: rabd (generate.py), igfold (struct_generate.py), or custom path"
 	exit 1;
 else
 	CKPT=`realpath $CKPT`

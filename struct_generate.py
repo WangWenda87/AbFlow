@@ -13,11 +13,11 @@ from data.pdb_utils import VOCAB, Residue, Peptide, Protein, AgAbComplex
 from utils.logger import print_log
 from utils.random_seed import setup_seed
 import sys
-import models.isMEAN
-sys.modules['models.dyMEAN'] = models.isMEAN
-sys.modules['models.dyMEAN.dyMEAN_model'] = models.isMEAN.isMEAN_model
-from models.isMEAN.isMEANStruct_model import isMEANStructModel
-models.isMEAN.isMEAN_model.dyMEANModel = isMEANStructModel
+import models.AbFlow
+sys.modules['models.dyMEAN'] = models.AbFlow
+sys.modules['models.dyMEAN.dyMEAN_model'] = models.AbFlow.AbFlowStruct_model
+from models.AbFlow.AbFlowStruct_model import AbFlowStructModel
+models.AbFlow.AbFlow_model.dyMEANModel = AbFlowStructModel
 
 
 def to_cplx(ori_cplx, ab_x, ab_s) -> AgAbComplex:

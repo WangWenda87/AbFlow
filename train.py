@@ -92,9 +92,9 @@ def main(args):
     config = TrainConfig(**vars(args))
 
     if args.model_type == 'isMEAN':
-        from trainer import isMEANTrainer as Trainer
-        from models import isMEANModel
-        model = isMEANModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
+        from trainer import AbFlowTrainer as Trainer
+        from models import AbFlowModel
+        model = AbFlowModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
                    VOCAB.get_num_amino_acid_type(), args.num_verts, VOCAB.get_mask_idx(),
                    args.k_neighbors, bind_dist_cutoff=args.bind_dist_cutoff,
                    n_layers=args.n_layers, struct_only=args.struct_only,
@@ -105,9 +105,9 @@ def main(args):
                    keep_memory=not args.no_memory,
                    cdr_type=args.cdr, paratope=args.paratope)
     elif args.model_type == 'isMEANStruct':
-        from trainer import isMEANTrainer as Trainer
-        from models import isMEANStructModel
-        model = isMEANStructModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
+        from trainer import AbFlowTrainer as Trainer
+        from models import AbFlowStructModel
+        model = AbFlowStructModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
                    VOCAB.get_num_amino_acid_type(), args.num_verts, VOCAB.get_mask_idx(),
                    args.k_neighbors, bind_dist_cutoff=args.bind_dist_cutoff,
                    n_layers=args.n_layers, struct_only=args.struct_only,
@@ -118,9 +118,9 @@ def main(args):
                    keep_memory=not args.no_memory,
                    cdr_type=args.cdr, paratope=args.paratope)
     elif args.model_type == 'isMEANOpt':
-        from trainer import isMEANOptTrainer as Trainer
-        from models import isMEANOptModel
-        model = isMEANOptModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
+        from trainer import AbFlowOptTrainer as Trainer
+        from models import AbFlowOptModel
+        model = AbFlowOptModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
                    VOCAB.get_num_amino_acid_type(), VOCAB.get_mask_idx(),
                    args.k_neighbors, bind_dist_cutoff=args.bind_dist_cutoff,
                    n_layers=args.n_layers, struct_only=args.struct_only,

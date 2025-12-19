@@ -14,7 +14,7 @@ from data.pdb_utils import VOCAB, AgAbComplex, Protein, Peptide
 from data.dataset import _generate_chain_data
 from utils.relax import openmm_relax
 from utils.logger import print_log
-# from models.isMEAN.predictor import Predictor
+# from models.AbFlow.predictor import Predictor
 
 
 class Dataset(torch.utils.data.Dataset):

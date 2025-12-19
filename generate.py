@@ -13,6 +13,21 @@ from data.pdb_utils import VOCAB, Residue, Peptide, Protein, AgAbComplex
 from utils.logger import print_log
 from utils.random_seed import setup_seed
 
+import sys
+import models.AbFlow
+import models.AbFlow.AbFlow_model
+import models.AbFlow.AbFlowOpt_model
+
+sys.modules['models.isMEAN'] = models.AbFlow
+sys.modules['models.dyMEAN'] = models.AbFlow
+sys.modules['models.isMEAN.isMEAN_model'] = models.AbFlow.AbFlow_model
+sys.modules['models.isMEAN.isMEANOpt_model'] = models.AbFlow.AbFlowOpt_model
+sys.modules['models.dyMEAN.dyMEAN_model'] = models.AbFlow.AbFlow_model
+
+models.AbFlow.AbFlow_model.isMEANModel = models.AbFlow.AbFlow_model.AbFlowModel
+models.AbFlow.AbFlow_model.dyMEANModel = models.AbFlow.AbFlow_model.AbFlowModel
+models.AbFlow.AbFlowOpt_model.isMEANOptModel = models.AbFlow.AbFlowOpt_model.AbFlowOptModel
+
 
 def to_cplx(ori_cplx, ab_x, ab_s) -> AgAbComplex:
     heavy_chain, light_chain = [], []
@@ -60,7 +75,11 @@ def to_cplx(ori_cplx, ab_x, ab_s) -> AgAbComplex:
 def generate(args):
 
     # load model
-    model = torch.load(args.ckpt, map_location='cpu')
+    model = torch.load(args.ckpt, map_location='cpu', weights_only=False)
+    if not hasattr(model, 'pep_seq'):
+        model.pep_seq = True
+    if not hasattr(model, 'pep_struct'):
+        model.pep_struct = True
     device = torch.device('cpu' if args.gpu == -1 else f'cuda:{args.gpu}')
     model.to(device)
     model.eval()
@@ -74,7 +93,7 @@ def generate(args):
     print_log(f'Paratope definition: {model.paratope}')
 
     # load test set
-    test_set = E2EDataset(args.test_set, cdr=cdr_type)
+    test_set = E2EDataset(args.test_set, pep_file=args.pep_file, surf_file=args.surf_file, cdr=cdr_type)
     test_loader = DataLoader(test_set, batch_size=args.batch_size,
                              num_workers=args.num_workers,
                              collate_fn=E2EDataset.collate_fn)
@@ -134,7 +153,7 @@ def generate(args):
                 'A': cplx.antigen.get_chain_names(),
                 'cdr_type': cdr_type,
                 'pdb': pdb_id,
-                'pmetric': pmets[i]
+                'pmetric': None
             })
             idx += 1
 
@@ -149,12 +168,14 @@ def parse():
     parser = argparse.ArgumentParser(description='Generate antibodies given epitopes')
     parser.add_argument('--ckpt', type=str, required=True, help='Path to checkpoint')
     parser.add_argument('--test_set', type=str, required=True, help='Path to test set')
+    parser.add_argument('--surf_file', type=str, default='all_data/RAbD/test_surf.pkl', help='pep file')
     parser.add_argument('--save_dir', type=str, default=None, help='Directory to save generated antibodies')
 
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of workers to use')
 
     parser.add_argument('--gpu', type=int, default=-1, help='GPU to use, -1 for cpu')
+    parser.add_argument('--pep_file', type=str, nargs='?', const='all_data/RAbD/test.pkl', default=None)
     return parser.parse_args()
 
 
