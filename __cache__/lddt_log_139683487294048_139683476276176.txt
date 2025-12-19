@@ -1,0 +1,7 @@
+Multi-reference mode: Off
+Verbosity level: 0
+Stereo-chemical and steric clash checks: Off 
+Inclusion Radius: 15
+Sequence separation: 0
+File: /home/wenda_wang/workSpace/AbFlow/__cache__/lddt_139683487294048_mod_1766044015.4339497.pdb
+Coverage: 1 (238 out of 238 residues)

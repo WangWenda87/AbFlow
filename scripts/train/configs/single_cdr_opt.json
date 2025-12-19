@@ -18,7 +18,5 @@
   "k_neighbors": 9,
   "n_layers": 3,
   "iter_round": 3,
-  "pep_seq": true,
-  "pep_struct": true,
   "bind_dist_cutoff": 6.6
 }

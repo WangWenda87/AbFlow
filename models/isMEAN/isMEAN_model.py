@@ -107,11 +107,11 @@ class isMEANModel(nn.Module):
         # training related cache
         self.batch_constants = {}
 
-        self.timing_stats = {
-            'surface_processing': 0.0,
-            'sme_encoding': 0.0,
-            'count': 0
-        }
+        # self.timing_stats = {
+        #     'surface_processing': 0.0,
+        #     'sme_encoding': 0.0,
+        #     'count': 0
+        # }
 
 
     def init_mask(self, X, S, cmask, smask, template):
@@ -120,10 +120,15 @@ class isMEANModel(nn.Module):
         X[cmask] = template
         return X, S
     
-    def replace_pep(self, X, S, paratope_mask, X_pep, S_pep) :
+    def replace_pep(self, X, S, paratope_mask, X_pep, S_pep):
+        if X_pep.abs().sum() == 0:
+            return X, S
+        pep_seq = getattr(self, 'pep_seq', True)
+        pep_struct = getattr(self, 'pep_struct', True)
+
         if self.pep_seq:
             S[paratope_mask] = S_pep
-        if self.pep_struct : 
+        if self.pep_struct:
             X[paratope_mask] = X_pep
         return X, S
     
@@ -230,19 +235,19 @@ class isMEANModel(nn.Module):
         local_edges = torch.cat([local_ctx_edges, local_inter_edges], dim=1)
         
         #prepare surface
-        surf_start = time.time()
+        # surf_start = time.time()
         aligned_local_inter_edges, epi_index = self.align_epi_ab(local_inter_edges, local_is_ab)
-        self.timing_stats['surface_processing'] += time.time() - surf_start
+        # self.timing_stats['surface_processing'] += time.time() - surf_start
 
         # message passing
-        sme_start = time.time()
+        # sme_start = time.time()
         H, pred_X, pred_local_X = self.gnn(H_0, X, ctx_edges,
                                            local_mask, local_X, surf, local_edges,
                                            paratope_mask, local_is_ab,
                                            aligned_local_inter_edges, epi_index,
                                            channel_attr=atom_embeddings,
                                            channel_weights=atom_weights)
-        self.timing_stats['sme_encoding'] += time.time() - sme_start
+        # self.timing_stats['sme_encoding'] += time.time() - sme_start
 
         interface_X = pred_local_X[local_is_ab]
         pred_logits = None if self.struct_only else self.ffn_residue(H)
@@ -496,11 +501,11 @@ class isMEANModel(nn.Module):
         if self.backbone_only:
             X, template = X[:, :4], template[:, :4]  # backbone
         
-        self.timing_stats = {
-            'surface_processing': 0.0,
-            'sme_encoding': 0.0,
-            'count': 0
-        }
+        # self.timing_stats = {
+        #     'surface_processing': 0.0,
+        #     'sme_encoding': 0.0,
+        #     'count': 0
+        # }
         
         gen_X, gen_S = X.clone(), S.clone()
         
@@ -606,27 +611,80 @@ class isMEANModel(nn.Module):
 
         self._clean_batch_constants()
 
-        self.timing_stats['count'] += 1
-        
-        # 打印timing信息
-        print(f"\n{'='*50}")
-        print(f"Timing Statistics (n_steps={n_steps}):")
-        print(f"{'='*50}")
-        print(f"Surface Processing: {self.timing_stats['surface_processing']:.4f}s")
-        print(f"SME Encoding:       {self.timing_stats['sme_encoding']:.4f}s")
-        total = self.timing_stats['surface_processing'] + self.timing_stats['sme_encoding']
-        print(f"{'-'*50}")
-        print(f"Total (Surf+SME):   {total:.4f}s")
-        if total > 0:
-            surf_pct = self.timing_stats['surface_processing'] / total * 100
-            sme_pct = self.timing_stats['sme_encoding'] / total * 100
-            print(f"Surface %: {surf_pct:.2f}%")
-            print(f"SME %:     {sme_pct:.2f}%")
-        print(f"{'='*50}\n")
+        # self.timing_stats['count'] += 1
 
         if return_hidden:
             return gen_X, gen_S, metric, H
         return gen_X, gen_S, metric
+    
+    def struct_sample(self, X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, template, lengths, init_noise=None, return_hidden=False):
+        
+        if self.backbone_only:
+            X, template = X[:, :4], template[:, :4]  # backbone
+        gen_X, gen_S = X.clone(), S.clone()
+        
+        # prepare constants
+        self._prepare_batch_constants(S, paratope_mask, lengths)
+
+        batch_id = self.batch_constants['batch_id']
+        batch_size = self.batch_constants['batch_size']
+        segment_ids = self.batch_constants['segment_ids']
+        interface_batch_id = self.batch_constants['interface_batch_id']
+        is_ab = segment_ids != self.aa_feature.ag_seg_id
+        s_batch_id = batch_id[smask]
+
+        best_metric = torch.ones(batch_size, dtype=torch.float, device=X.device) * 1e10
+        interface_cmask = paratope_mask[cmask]
+
+        n_tries = 10 if self.struct_only else 1
+        for i in range(n_tries):
+        
+            # generate
+            H, pred_S, r_pred_S_logits, pred_X, r_interface_X, _, prmsd = self._forward(X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, template, lengths, init_noise)
+
+            # PPL or PRMSD
+            if not self.struct_only:
+                S_logits = r_pred_S_logits[-1][0][smask]
+                S_probs = torch.max(torch.softmax(S_logits, dim=-1), dim=-1)[0]
+                nlls = -torch.log(S_probs)
+                metric = scatter_mean(nlls, s_batch_id)  # [batch_size]
+            else:
+                metric = scatter_mean(prmsd[interface_cmask], interface_batch_id)  # [batch_size]
+
+            update = metric < best_metric
+            cupdate = cmask & update[batch_id]
+            supdate = smask & update[batch_id]
+            # update metric history
+            best_metric[update] = metric[update]
+
+            # 1. set generated part
+            gen_X[cupdate] = pred_X[cupdate]
+            if not self.struct_only:
+                gen_S[supdate] = pred_S[supdate]
+        
+            interface_X = r_interface_X[-1]
+            # 2. align by cdr
+            for i in range(batch_size):
+                if not update[i]:
+                    continue
+                # 1. align CDRH3
+                is_cur_graph = batch_id == i
+                cdrh3_cur_graph = torch.logical_and(is_cur_graph, paratope_mask)
+                ori_cdr = gen_X[cdrh3_cur_graph][:, :4]  # backbone
+                pred_cdr = interface_X[interface_batch_id == i][:, :4]
+                _, R, t = kabsch_torch(ori_cdr.reshape(-1, 3), pred_cdr.reshape(-1, 3))
+
+                # 2. tranform antibody
+                is_cur_ab = is_cur_graph & is_ab
+                ab_X = torch.matmul(gen_X[is_cur_ab], R.T) + t
+                gen_X[is_cur_ab] = ab_X
+
+        self._clean_batch_constants()
+
+        if return_hidden:
+            return gen_X, gen_S, metric, H
+        return gen_X, gen_S, metric
+
     def sample_many(self, X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, template, lengths, n_samples=5, n_steps=20, return_hidden=False):
         """
         Generate multiple samples in a single call

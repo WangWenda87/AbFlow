@@ -48,6 +48,8 @@ class isMEANOptTrainer(Trainer):
 
     def share_step(self, batch, batch_idx, val=False):
         del batch['template']
+        del batch['X_pep']
+        del batch['S_pep']
         batch['context_ratio'] = self.get_context_ratio()
         loss, seq_detail, structure_detail, pdev_detail = self.model(**batch)
         snll, aar = seq_detail

@@ -11,7 +11,7 @@
   "save_topk": 10,
   "batch_size": 16,
   "shuffle": true,
-  "model_type": "isMEAN",
+  "model_type": "isMEANStruct",
   "embed_dim": 64,
   "hidden_size": 128,
   "k_neighbors": 9,

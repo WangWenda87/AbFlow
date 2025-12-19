@@ -46,7 +46,7 @@ def parse():
                         help="Local rank. Necessary for using the torch.distributed.launch utility.")
     
     # model
-    parser.add_argument('--model_type', type=str, required=True, choices=['isMEAN', 'isMEANOpt'],
+    parser.add_argument('--model_type', type=str, required=True, choices=['isMEAN', 'isMEANStruct', 'isMEANOpt'],
                         help='Type of model')
     parser.add_argument('--embed_dim', type=int, default=64, help='dimension of residue/atom embedding')
     parser.add_argument('--hidden_size', type=int, default=128, help='dimension of hidden states')
@@ -95,6 +95,19 @@ def main(args):
         from trainer import isMEANTrainer as Trainer
         from models import isMEANModel
         model = isMEANModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
+                   VOCAB.get_num_amino_acid_type(), args.num_verts, VOCAB.get_mask_idx(),
+                   args.k_neighbors, bind_dist_cutoff=args.bind_dist_cutoff,
+                   n_layers=args.n_layers, struct_only=args.struct_only,
+                   iter_round=args.iter_round,
+                   backbone_only=args.backbone_only,
+                   fix_channel_weights=args.fix_channel_weights,
+                   pred_edge_dist=not args.no_pred_edge_dist,
+                   keep_memory=not args.no_memory,
+                   cdr_type=args.cdr, paratope=args.paratope)
+    elif args.model_type == 'isMEANStruct':
+        from trainer import isMEANTrainer as Trainer
+        from models import isMEANStructModel
+        model = isMEANStructModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
                    VOCAB.get_num_amino_acid_type(), args.num_verts, VOCAB.get_mask_idx(),
                    args.k_neighbors, bind_dist_cutoff=args.bind_dist_cutoff,
                    n_layers=args.n_layers, struct_only=args.struct_only,

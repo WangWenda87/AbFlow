@@ -12,6 +12,12 @@ from data.dataset import E2EDataset
 from data.pdb_utils import VOCAB, Residue, Peptide, Protein, AgAbComplex
 from utils.logger import print_log
 from utils.random_seed import setup_seed
+import sys
+import models.isMEAN
+sys.modules['models.dyMEAN'] = models.isMEAN
+sys.modules['models.dyMEAN.dyMEAN_model'] = models.isMEAN.isMEAN_model
+from models.isMEAN.isMEAN_model import isMEANModel
+models.isMEAN.isMEAN_model.dyMEANModel = isMEANModel
 
 
 def to_cplx(ori_cplx, ab_x, ab_s) -> AgAbComplex:
@@ -61,6 +67,10 @@ def generate(args):
 
     # load model
     model = torch.load(args.ckpt, map_location='cpu', weights_only=False)
+    if not hasattr(model, 'pep_seq'):
+        model.pep_seq = True
+    if not hasattr(model, 'pep_struct'):
+        model.pep_struct = True
     device = torch.device('cpu' if args.gpu == -1 else f'cuda:{args.gpu}')
     model.to(device)
     model.eval()
@@ -149,18 +159,14 @@ def parse():
     parser = argparse.ArgumentParser(description='Generate antibodies given epitopes')
     parser.add_argument('--ckpt', type=str, required=True, help='Path to checkpoint')
     parser.add_argument('--test_set', type=str, required=True, help='Path to test set')
-    parser.add_argument('--pep_file', type=str, default='all_data/RAbD/test.pkl', help='pep file')
-<<<<<<< Updated upstream
     parser.add_argument('--surf_file', type=str, default='all_data/RAbD/test_surf.pkl', help='pep file')
-=======
-    parser.add_argument('--surf_file', type=str, default='all_data/SAb-23-H2-Ab/test_surf.pkl', help='pep file')
->>>>>>> Stashed changes
     parser.add_argument('--save_dir', type=str, default=None, help='Directory to save generated antibodies')
 
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of workers to use')
 
     parser.add_argument('--gpu', type=int, default=-1, help='GPU to use, -1 for cpu')
+    parser.add_argument('--pep_file', type=str, nargs='?', const='all_data/RAbD/test.pkl', default=None)
     return parser.parse_args()
 
 

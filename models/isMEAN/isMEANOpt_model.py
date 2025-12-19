@@ -84,12 +84,12 @@ class isMEANOptModel(nn.Module):
         X[cmask] = coords + noise
         return X, S
     
-    def replace_pep(self, X, S, paratope_mask, X_pep, S_pep) :
-        # if S_pep :
-        #     S[paratope_mask] = S_pep
-        # if X_pep : 
-        #     X[paratope_mask] = X_pep
-        return X, S
+    # def replace_pep(self, X, S, paratope_mask, X_pep, S_pep) :
+    #     # if S_pep :
+    #     #     S[paratope_mask] = S_pep
+    #     # if X_pep : 
+    #     #     X[paratope_mask] = X_pep
+    #     return X, S
 
     def message_passing(self, X, S, residue_pos, batch_id, t, memory_H=None, smooth_prob=None, smooth_mask=None):
         # embeddings
@@ -146,10 +146,6 @@ class isMEANOptModel(nn.Module):
     def init_interface(self, X, S, paratope_mask, batch_id, init_noise=None):
         ag_centers = X[S == self.aa_feature.boa_idx][:, 0]  # [bs, 3]
         init_local_X = torch.zeros_like(X[paratope_mask])
-<<<<<<< Updated upstream
-=======
-        
->>>>>>> Stashed changes
         init_local_X = init_local_X + ag_centers[batch_id[paratope_mask]].unsqueeze(1)
         noise = torch.randn_like(init_local_X) if init_noise is None else init_noise
         ca_noise = noise[:, 1]
@@ -161,10 +157,6 @@ class isMEANOptModel(nn.Module):
                                    (paratope_mask.sum(),), 
                                    device=X.device,
                                    dtype=torch.long)
-<<<<<<< Updated upstream
-=======
-        # print(paratope_mask)
->>>>>>> Stashed changes
         return init_local_X, init_local_S
     
     def optimal_alignment(self, X0, target_X):
@@ -203,7 +195,7 @@ class isMEANOptModel(nn.Module):
     def _clean_batch_constants(self):
         self.batch_constants = {}
 
-    def _forward(self, X, S, cmask, smask, paratope_mask, X_pep, S_pep, residue_pos, init_noise=None):
+    def _forward(self, X, S, cmask, smask, paratope_mask, residue_pos, init_noise=None):
         batch_id = self.batch_constants['batch_id']
 
         # mask sequence and add noise to ground truth coordinates
@@ -211,7 +203,7 @@ class isMEANOptModel(nn.Module):
         
         # replace pepglad
         # print(len(S[smask]), len(S_pep))
-        X, S = self.replace_pep(X, S, paratope_mask, X_pep, S_pep)
+        # X, S = self.replace_pep(X, S, paratope_mask, X_pep, S_pep)
 
         # update center
         X = self.aa_feature.update_global_coordinates(X, S)
@@ -245,7 +237,7 @@ class isMEANOptModel(nn.Module):
 
         return H, S, r_pred_S_logits, pred_X, prmsd
 
-    def forward(self, X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, lengths, xloss_mask, context_ratio=0, seq_alpha=1):
+    def forward(self, X, S, cmask, smask, paratope_mask, surface, residue_pos, lengths, xloss_mask, context_ratio=0, seq_alpha=1):
         '''
         :param bind_ag: [N_bind], node idx of binding residues in antigen
         :param bind_ab: [N_bind], node idx of binding residues in antibody
@@ -278,7 +270,7 @@ class isMEANOptModel(nn.Module):
         S[paratope_mask] = St.to(S.dtype)
 
         # get results
-        H, pred_S, r_pred_S_logits, pred_X, prmsd = self._forward(X, S, cmask, smask, paratope_mask, X_pep, S_pep, residue_pos)
+        H, pred_S, r_pred_S_logits, pred_X, prmsd = self._forward(X, S, cmask, smask, paratope_mask, residue_pos)
 
         # sequence negtive log likelihood
         snll, total = 0, 0
@@ -310,7 +302,7 @@ class isMEANOptModel(nn.Module):
 
         return loss, (snll, aar), (struct_loss, *struct_loss_details), (pdev_loss, prmsd_loss)
 
-    def sample(self, X, S, cmask, smask, paratope_mask, residue_pos, lengths, X_pep=False, S_pep=False, return_hidden=False, init_noise=None, n_steps=10):
+    def sample(self, X, S, cmask, smask, paratope_mask, residue_pos, lengths, return_hidden=False, init_noise=None, n_steps=10):
         gen_X, gen_S = X.clone(), S.clone()
         
         # prepare constants
@@ -338,7 +330,7 @@ class isMEANOptModel(nn.Module):
                 # 使用message passing获取速度场
                 H, pred_S, r_pred_S_logits, pred_X, _ = self._forward(
                     X_cur, S_cur, cmask, smask, paratope_mask, 
-                    X_pep, S_pep, residue_pos, init_noise
+                    residue_pos, init_noise
                 )
 
                 # 计算速度场
@@ -366,7 +358,7 @@ class isMEANOptModel(nn.Module):
             S[paratope_mask] = St
 
         # generate
-        H, pred_S, r_pred_S_logits, pred_X, _ = self._forward(X, S, cmask, smask, paratope_mask, X_pep, S_pep, residue_pos, init_noise)
+        H, pred_S, r_pred_S_logits, pred_X, _ = self._forward(X, S, cmask, smask, paratope_mask, residue_pos, init_noise)
 
         # PPL
         if not self.struct_only:

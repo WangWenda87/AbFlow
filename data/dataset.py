@@ -157,6 +157,7 @@ class E2EDataset(torch.utils.data.Dataset):
         super().__init__()
         
         self.pep_file = pep_file
+        self.use_pep = pep_file is not None
         self.surf_file = surf_file
         self.cdr = cdr
         self.paratope = paratope
@@ -330,11 +331,6 @@ class E2EDataset(torch.utils.data.Dataset):
         # generate antigen data
         ag_data = _generate_chain_data(ag_residues, VOCAB.BOA)
         
-        #generate surface verts for each epitope residue
-        # epi_verts = get_epi_surf(item)
-        # epi_surface_verts = _cal_verts(epi_verts, ag_data)
-        # verts = pad_sample(epi_surface_verts, self.num_verts)
-
         hc, lc = item.get_heavy_chain(), item.get_light_chain()
         hc_residues, lc_residues = [], []
 
@@ -382,11 +378,13 @@ class E2EDataset(torch.utils.data.Dataset):
 
         template = ConserveTemplateGenerator().construct_template(item, align=False)
         data['template'] = template
+        if self.use_pep:
+            data['X_pep'], data['S_pep'] = load_pep(self.pep_file, self.pdb_name)
+        else:
+            n_paratope = int(paratope_mask.sum())
+            data['X_pep'] = np.zeros((n_paratope, VOCAB.MAX_ATOM_NUMBER, 3), dtype=np.float32)
+            data['S_pep'] = np.zeros(n_paratope, dtype=np.int64)
         
-        data['X_pep'], data['S_pep'] = _generate_pep_data(item)
-        # data['X_pep'], data['S_pep'] = load_pep(self.pep_file, self.pdb_name)
-        # data['X_pep'], data['S_pep'] = 0, 0
-        # data['surface'] = verts
         if self.surf_file : 
             data['surface'] = load_surf(self.surf_file, self.pdb_name)
         

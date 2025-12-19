@@ -167,7 +167,7 @@ def parse():
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of workers to use')
     parser.add_argument('--n_samples', type=int, default=30, help='Number of samples to generate per protein')
-    parser.add_argument('--n_steps', type=int, default=20, help='Number of flow steps')
+    parser.add_argument('--n_steps', type=int, default=10, help='Number of flow steps')
 
     parser.add_argument('--gpu', type=int, default=-1, help='GPU to use, -1 for cpu')
     return parser.parse_args()
