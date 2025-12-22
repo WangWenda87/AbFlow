@@ -1,8 +1,6 @@
 # AbFlow
 
-# AbFlow
-
-![Overview](figures/overview.png)
+![Overview](figure/overview.png)
 
 AbFlow studies the antibody design problem centered on complementary determinants (CDRS), and addresses the coupling between local generation of CDRS and all-atomic information propagation, as well as the introduction of fine-grained structural information of antigens, through the message propagation mechanism of local flow matching and antigen surface enhancement
 
@@ -225,4 +223,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Contact
 
-For questions or issues, please open an issue on GitHub or contact the authors.
+For questions or issues, please open an issue on GitHub or [contact the authors](wangwenda87@ruc.edu.cn).
