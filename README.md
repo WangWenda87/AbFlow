@@ -17,17 +17,18 @@ AbFlow studies the antibody design problem centered on complementary determinant
 
 ## Features
 
-- **Single-CDR Design**: Focus on specific CDR-H3 regions
-- **Multi-CDR Design**: Design multiple complementarity-determining regions (CDRs) simultaneously
-- **Structure Prediction**: Predict antibody structure from sequence
+- **Paratope-Centric Design**: Focus on specific CDR-H3 regions
+- **Multi-CDRs Design**: Design multiple complementarity-determining regions (CDRs) simultaneously
 - **Affinity Optimization**: Optimize antibody-antigen binding affinity
+- **Structure Prediction**: Predict antibody structure from sequence
+
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.10
-- CUDA 12.1 (for GPU support)
+- Python 3.10.14
+- CUDA 12.4 (for GPU support)
 - Conda (recommended)
 
 ### Step 1: Clone the Repository
