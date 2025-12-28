@@ -10,4 +10,4 @@ sys.modules['models.isMEAN'] = AbFlow
 sys.modules['models.dyMEAN'] = AbFlow
 sys.modules['models.isMEAN.isMEAN_model'] = AbFlow.AbFlow_model
 sys.modules['models.isMEAN.isMEANOpt_model'] = AbFlow.AbFlowOpt_model
-sys.modules['models.dyMEAN.dyMEAN_model'] = AbFlow.AbFlow_model
+sys.modules['models.dyMEAN.dyMEAN_model'] = AbFlow.AbFlowStruct_model

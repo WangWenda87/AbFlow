@@ -2,7 +2,7 @@
 
 ![Overview](figure/overview.png)
 
-AbFlow studies the antibody design problem centered on complementary determinants (CDRS), and addresses the coupling between local generation of CDRS and all-atomic information propagation, as well as the introduction of fine-grained structural information of antigens, through the message propagation mechanism of local flow matching and antigen surface enhancement
+AbFlow studies the antibody design problem centered on complementary determinants (CDRS), and addresses the coupling between local generation of CDRS and all-atomic information propagation, as well as the introduction of fine-grained structural information of antigens, through the message propagation mechanism of local flow matching and antigen surface enhancement.
 
 ## Table of Contents
 
@@ -44,17 +44,17 @@ conda env create -f environment.yaml
 conda activate AbFlow
 ```
 
-### Step 3: Install Additional Dependencies
+### Step 3: Install PyTorch with CUDA Support
+
+```bash
+pip install torch==2.6.0 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu124
+pip install torch-scatter -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
+```
+
+### Step 4: Install Additional Dependencies
 
 ```bash
 pip install -r requirements.txt
-```
-
-### Step 4: Install PyTorch with CUDA Support
-
-```bash
-pip install torch==2.4.0 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
-pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cu121.html
 ```
 
 ### Step 5: Compile DockQ (Optional, for evaluation)
