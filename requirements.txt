@@ -8,6 +8,5 @@ pdbfixer==1.9.0
 Requests==2.32.5
 scipy==1.11.4
 simtk==0.1.0
-torch==2.6.0
-torch_scatter
+tensorboard
 tqdm==4.66.5

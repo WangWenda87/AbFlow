@@ -49,7 +49,7 @@ conda activate AbFlow
 
 ```bash
 pip install torch==2.6.0 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu124
-pip install torch-scatter -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
+pip install torch_scatter -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
 ```
 
 ### Step 4: Install Additional Dependencies
@@ -149,11 +149,11 @@ AbFlow/
 #### Training Different Tasks
 
 ```bash
-# Multi-CDR Design
-GPU=0,1 bash scripts/train/train.sh scripts/train/configs/multi_cdr_design.json
-
 # Paratope-CDR Design
 GPU=0,1 bash scripts/train/train.sh scripts/train/configs/single_cdr_design.json
+
+# Multi-CDR Design
+GPU=0,1 bash scripts/train/train.sh scripts/train/configs/multi_cdr_design.json
 
 # Structure Prediction
 GPU=0,1 bash scripts/train/train.sh scripts/train/configs/struct_prediction.json
@@ -162,13 +162,6 @@ GPU=0,1 bash scripts/train/train.sh scripts/train/configs/struct_prediction.json
 GPU=0,1 bash scripts/train/train.sh scripts/train/configs/single_cdr_opt.json
 
 GPU=0 bash scripts/train/train_predictor.sh checkpoints/cdrh3_opt.ckpt
-```
-
-#### Distributed Training with Custom Settings
-
-```bash
-# Specify master address and port for distributed training
-GPU=0,1 ADDR=localhost PORT=9901 bash scripts/train/train.sh scripts/train/configs/multi_cdr_design.json
 ```
 
 ### Testing
