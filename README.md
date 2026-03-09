@@ -2,7 +2,7 @@
 
 ![Overview](figure/overview.png)
 
-AbFlow studies the antibody design problem centered on complementary determinants (CDRS), and addresses the coupling between local generation of CDRS and all-atomic information propagation, as well as the introduction of fine-grained structural information of antigens, through the message propagation mechanism of local flow matching and antigen surface enhancement
+AbFlow studies the antibody design problem centered on complementary determinants (CDRS), and addresses the coupling between local generation of CDRS and all-atomic information propagation, as well as the introduction of fine-grained structural information of antigens, through the message propagation mechanism of local flow matching and antigen surface enhancement.
 
 ## Table of Contents
 
@@ -17,17 +17,18 @@ AbFlow studies the antibody design problem centered on complementary determinant
 
 ## Features
 
-- **Single-CDR Design**: Focus on specific CDR-H3 regions
-- **Multi-CDR Design**: Design multiple complementarity-determining regions (CDRs) simultaneously
-- **Structure Prediction**: Predict antibody structure from sequence
+- **Paratope-Centric Design**: Focus on specific CDR-H3 regions
+- **Multi-CDRs Design**: Design multiple complementarity-determining regions (CDRs) simultaneously
 - **Affinity Optimization**: Optimize antibody-antigen binding affinity
+- **Structure Prediction**: Predict antibody structure from sequence
+
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.10
-- CUDA 12.1 (for GPU support)
+- Python 3.10.14
+- CUDA 12.4 (for GPU support)
 - Conda (recommended)
 
 ### Step 1: Clone the Repository
@@ -44,17 +45,17 @@ conda env create -f environment.yaml
 conda activate AbFlow
 ```
 
-### Step 3: Install Additional Dependencies
+### Step 3: Install PyTorch with CUDA Support
+
+```bash
+pip install torch==2.6.0 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu124
+pip install torch_scatter -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
+```
+
+### Step 4: Install Additional Dependencies
 
 ```bash
 pip install -r requirements.txt
-```
-
-### Step 4: Install PyTorch with CUDA Support
-
-```bash
-pip install torch==2.4.0 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
-pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cu121.html
 ```
 
 ### Step 5: Compile DockQ (Optional, for evaluation)
@@ -148,11 +149,11 @@ AbFlow/
 #### Training Different Tasks
 
 ```bash
-# Multi-CDR Design
-GPU=0,1 bash scripts/train/train.sh scripts/train/configs/multi_cdr_design.json
-
 # Paratope-CDR Design
 GPU=0,1 bash scripts/train/train.sh scripts/train/configs/single_cdr_design.json
+
+# Multi-CDR Design
+GPU=0,1 bash scripts/train/train.sh scripts/train/configs/multi_cdr_design.json
 
 # Structure Prediction
 GPU=0,1 bash scripts/train/train.sh scripts/train/configs/struct_prediction.json
@@ -161,13 +162,6 @@ GPU=0,1 bash scripts/train/train.sh scripts/train/configs/struct_prediction.json
 GPU=0,1 bash scripts/train/train.sh scripts/train/configs/single_cdr_opt.json
 
 GPU=0 bash scripts/train/train_predictor.sh checkpoints/cdrh3_opt.ckpt
-```
-
-#### Distributed Training with Custom Settings
-
-```bash
-# Specify master address and port for distributed training
-GPU=0,1 ADDR=localhost PORT=9901 bash scripts/train/train.sh scripts/train/configs/multi_cdr_design.json
 ```
 
 ### Testing

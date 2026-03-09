@@ -1,5 +1,8 @@
 name: AbFlow
 channels:
+  - pytorch
+  - nvidia
+  - conda-forge
   - defaults
 dependencies:
   - bioconda::anarci
