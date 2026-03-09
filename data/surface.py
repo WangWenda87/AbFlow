@@ -55,8 +55,9 @@ def _generate_chain_data(residues, start):
     return data
 
 
-def get_epi_surf(cplx, msms_file = '/home/wenda_wang/workSpace/GMEAN/msms/') : 
+def get_epi_surf(cplx, msms_file = './msms/') : 
     name = cplx.get_id()[:4]
+    os.makedirs(msms_file, exist_ok=True)
     
     peptides = {}
     for chain in cplx.antigen.get_chain_names() : 
