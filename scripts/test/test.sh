@@ -8,9 +8,9 @@ GPU="${GPU:-0}"
 CKPT=$1
 TEST_SET=$2
 SAVE_DIR="${3:-"$(dirname "$CKPT")/results"}"
-TASK="${4:-}"  # 第4个参数
+TASK="${4:-}" 
+SURF_FILE="${5:-}"
 
-# 构建 pep_file 和 surf_file 参数，以及选择脚本
 if [ "$TASK" = "rabd" ]; then
     PEP_ARG="--pep_file all_data/RAbD/test.pkl"
     SURF_ARG="--surf_file all_data/RAbD/test_surf.pkl"
@@ -19,15 +19,9 @@ elif [ "$TASK" = "igfold" ]; then
     PEP_ARG="--pep_file all_data/IgFold/test.pkl"
     SURF_ARG="--surf_file all_data/IgFold/test_surf.pkl"
     SCRIPT="struct_generate.py"
-elif [ -n "$TASK" ]; then
-    # 如果不是预设值，当作自定义路径前缀
-    PEP_ARG="--pep_file ${TASK}"
-    SURF_ARG="--surf_file ${TASK}"
-    SCRIPT="generate.py"
 else
     PEP_ARG=""
-    SURF_ARG=""
-    SCRIPT="generate.py"
+    SURF_ARG="${SURF_FILE:+--surf_file ${SURF_FILE}}" 
 fi
 ######### end of adjust ##########
 
