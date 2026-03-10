@@ -207,6 +207,107 @@ GPU=0 bash scripts/test/optimize_test.sh \
 ```
 which will do 50 steps of gradient search without restrictions on the maximum number of changed residues (change 0 to any number to restrict the upperbound of $\Delta L$).
 
+### Custom Dataset Processing and Surface Computation Pipeline
+
+#### Directory Structure
+
+The following directory structure is required:
+
+```
+base_dir/
+├── prot_ids.txt          # One PDB entry name per line (e.g., 1abc_H_L_A)
+├── fasta/
+│   ├── 1abc_H_L_A.fasta  # One fasta file per entry
+│   ├── 2xyz_H_L_B.fasta
+│   └── ...
+└── pdb/
+    ├── 1abc.pdb           # Corresponding PDB structure files
+    ├── 2xyz.pdb
+    └── ...
+```
+
+**File format requirements:**
+
+- `prot_ids.txt`: One entry name per line; the first 4 characters must be the PDB ID (e.g., `1abc_H_L_A`)
+- `fasta/*.fasta`: Each file must contain at least 2 sequences, labeled as Heavy chain (H), Light chain (L), and optionally Antigen chain (A):
+
+  ```
+  >H
+  QVQLQESGPGLVKPSETLSLTCTVSGSSLTSYGVHWVRQPPGKGLEGLGVIWPGGSTNYNSALMSRVTI
+  SKDNSKSQVSLKMSSLTAADTAVYYCARVTGTWYFDVWGQGTTVTVSS
+  >L
+  DIQMTQSPSSLSASLGDRVTISCSASQGISNYLNWYQQKPDGTVKLLIYYTSTLHSGVPSRFSGSGSGT
+  DYTLTISSLQPEDIATYYCQQYSKLPWTFGGGTKLEIK
+  >A
+  LQDPCSNCPAGTFCDNNRNQICSPCPPNSFSSAGGQRTCDICRQCKGVFRTRKECSSTSNAECDCTPGFH
+  CLGAGCSMCEQDCKQGQELTKKGCKDCCFGTFNDQKRGICRPWTNCSLDGKSVLVNGTKERDVVCGPSPA
+  DLSPGASSVTPPAPAREPGHSPQLEGGGHHHHHH
+  ```
+
+  `>H` denotes the Heavy chain, `>L` denotes the Light chain, and `>A` denotes the Antigen chain. Multiple antigen chains (e.g., `>A`, `>B`) are supported; antigen chains are optional.
+
+- `pdb/`: Raw PDB structure files, used by `data/download.py` in subsequent steps.
+
+---
+
+#### Step 1: Generate summary.tsv
+
+Run the following script to automatically generate `summary.tsv` from `prot_ids.txt` and the `fasta/` directory:
+
+```bash
+python create_summary.py --base_dir <your/base/directory>
+```
+
+The output `summary.tsv` has the following format:
+
+```
+pdb    Hchain    Lchain    antigen_chain    antigen_type
+1abc   H         L         A                protein
+```
+
+---
+
+#### Step 2: Generate the Standard Dataset File
+
+Using `summary.tsv` and the PDB structures in `pdb/`, generate the standard `antibody_data.json`:
+
+```bash
+python data/download.py \
+    --summary <base_dir>/summary.tsv \
+    --fout <base_dir>/<dataset>.json \
+    --type sabdab \
+    --pdb_dir <base_dir>/pdb \
+    --numbering imgt \
+    --pre_numbered \
+    --n_cpu 8
+```
+
+- `--pre_numbered`: Indicates that PDB files are already IMGT-numbered; skips the renumbering step
+- `--numbering imgt`: Uses the IMGT numbering scheme to parse CDR regions
+- `--n_cpu 8`: Number of CPU cores for parallel processing; adjust according to your server
+
+The output `<dataset>.json` is the standard dataset format required for inference.
+
+---
+
+#### Step 3: Generate Molecular Surface Files
+
+**Install MSMS (required for surface computation):**
+
+```bash
+conda install -c bioconda msms
+```
+
+**Compute the molecular surface feature file:**
+
+```python
+from data.surface import generate_surf_pkl
+generate_surf_pkl("<dataset>.json",
+                  "<surface>.pkl")
+```
+
+The output `<surface>.pkl` contains the antigen surface features required for inference.
+
 ## Citation
 
 

@@ -30,7 +30,7 @@ def create_sabdab_summary(base_dir):
             try:
                 pdb = pdb_name[:4]
 
-                native_fasta = parse_fasta(f"{base_dir}/fasta.files.native/{pdb_name}.fasta")
+                native_fasta = parse_fasta(f"{base_dir}/fasta/{pdb_name}.fasta")
                 
                 chains = list(native_fasta.keys())
                 heavy_chain = chains[0]
@@ -67,13 +67,13 @@ def main():
     print("1. Run the original data processing script with:")
     print(f"   python data/download.py \\")
     print(f"     --summary {summary_path} \\")
-    print(f"     --fout {base_dir}/antibody_data.json \\")
+    print(f"     --fout {base_dir}/<dataset>.json \\")
     print(f"     --type sabdab \\")
-    print(f"     --pdb_dir {base_dir}/pdb.files.native \\")
+    print(f"     --pdb_dir {base_dir}/pdb \\")
     print(f"     --numbering imgt \\")
     print(f"     --pre_numbered \\")
     print(f"     --n_cpu 8")
-    print("\n2. The output will be in antibody_data.json with correct IMGT numbering")
+    print("\n2. The output will be in <dataset>.json with correct IMGT numbering")
 
 if __name__ == "__main__":
     main()
