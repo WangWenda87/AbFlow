@@ -381,7 +381,7 @@ class E2EDataset(torch.utils.data.Dataset):
         if self.use_pep:
             data['X_pep'], data['S_pep'] = load_pep(self.pep_file, self.pdb_name)
         else:
-            n_paratope = int(paratope_mask.sum())
+            n_paratope = int(sum(paratope_mask))
             data['X_pep'] = np.zeros((n_paratope, VOCAB.MAX_ATOM_NUMBER, 3), dtype=np.float32)
             data['S_pep'] = np.zeros(n_paratope, dtype=np.int64)
         
@@ -417,12 +417,12 @@ def parse():
     parser = argparse.ArgumentParser(description='Process data')
     parser.add_argument('--dataset', type=str, required=True, help='dataset')
     parser.add_argument('--save_dir', type=str, default=None, help='Path to save processed data')
-    parser.add_argument('--pep_file', type=str, default='all_data/RAbD/test.pkl', help='Path to save processed data')
-    parser.add_argument('--surf_file', type=str, default='all_data/RAbD/test_surf.pkl', help='Path to save processed data')
+    parser.add_argument('--pep_file', type=str, default=None, help='Path to save processed data')
+    parser.add_argument('--surf_file', type=str, default=None, help='Path to save processed data')
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = parse()
-    dataset = E2EDataset(args.dataset, args.save_dir, args.pep_file, args.surf_file, cdr='H3', num_entry_per_file=-1)
+    dataset = E2EDataset(args.dataset, args.save_dir, pep_file=args.pep_file, surf_file=args.surf_file, cdr='H3', num_entry_per_file=-1)
     print(len(dataset))

@@ -1,4 +1,9 @@
-# AbFlow
+<h1 align="center">AbFlow:  End-to-end Paratope-Centric Antibody Design by Interaction Enhanced Flow Matching</h1>
+<p align="center">
+  <a href="https://arxiv.org/abs/2602.07084">
+    <img src="https://img.shields.io/badge/arXiv-2602.07084-b31b1b.svg" alt="arXiv">
+  </a>
+</p>
 
 ![Overview](figure/overview.png)
 

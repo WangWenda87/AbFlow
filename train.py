@@ -20,8 +20,8 @@ def parse():
     # data
     parser.add_argument('--train_set', type=str, required=True, help='path to train set')
     parser.add_argument('--valid_set', type=str, required=True, help='path to valid set')
-    parser.add_argument('--train_pep', type=str, required=True, help='path to train pep set')
-    parser.add_argument('--valid_pep', type=str, required=True, help='path to valid pep set')
+    parser.add_argument('--train_pep', type=str, default=None, help='path to train pep set')
+    parser.add_argument('--valid_pep', type=str, default=None, help='path to valid pep set')
     parser.add_argument('--train_surf', type=str, default=None, help='path to train surf set')
     parser.add_argument('--valid_surf', type=str, default=None, help='path to valid surf set')
     parser.add_argument('--cdr', type=str, default=None, nargs='+', help='cdr to generate, L1/2/3, H1/2/3,(can be list, e.g., L3 H3) None for all including framework')
@@ -46,7 +46,7 @@ def parse():
                         help="Local rank. Necessary for using the torch.distributed.launch utility.")
     
     # model
-    parser.add_argument('--model_type', type=str, required=True, choices=['isMEAN', 'isMEANStruct', 'isMEANOpt'],
+    parser.add_argument('--model_type', type=str, required=True, choices=['AbFlow', 'AbFlowStruct', 'AbFlowOpt'],
                         help='Type of model')
     parser.add_argument('--embed_dim', type=int, default=64, help='dimension of residue/atom embedding')
     parser.add_argument('--hidden_size', type=int, default=128, help='dimension of hidden states')
@@ -91,7 +91,7 @@ def main(args):
     ########## define your model/trainer/trainconfig #########
     config = TrainConfig(**vars(args))
 
-    if args.model_type == 'isMEAN':
+    if args.model_type == 'AbFlow':
         from trainer import AbFlowTrainer as Trainer
         from models import AbFlowModel
         model = AbFlowModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
@@ -104,7 +104,7 @@ def main(args):
                    pred_edge_dist=not args.no_pred_edge_dist,
                    keep_memory=not args.no_memory,
                    cdr_type=args.cdr, paratope=args.paratope)
-    elif args.model_type == 'isMEANStruct':
+    elif args.model_type == 'AbFlowStruct':
         from trainer import AbFlowTrainer as Trainer
         from models import AbFlowStructModel
         model = AbFlowStructModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
@@ -117,7 +117,7 @@ def main(args):
                    pred_edge_dist=not args.no_pred_edge_dist,
                    keep_memory=not args.no_memory,
                    cdr_type=args.cdr, paratope=args.paratope)
-    elif args.model_type == 'isMEANOpt':
+    elif args.model_type == 'AbFlowOpt':
         from trainer import AbFlowOptTrainer as Trainer
         from models import AbFlowOptModel
         model = AbFlowOptModel(args.embed_dim, args.hidden_size, VOCAB.MAX_ATOM_NUMBER,
