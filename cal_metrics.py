@@ -111,13 +111,13 @@ def cal_metrics(inputs):
     gt_x, pred_x = np.array(gt_x), np.array(pred_x)
     results['RMSD(CA) aligned'] = compute_rmsd(gt_x, pred_x, aligned=False)
     # results['RMSD(CA)'] = compute_rmsd(gt_x, pred_x, aligned=True)
-    if cdr_type is not None:
-        for cdr in cdr_type:
-            gt_cdr, pred_cdr = ref_cplx.get_cdr(cdr), mod_cplx.get_cdr(cdr)
-            gt_x = np.array([gt_cdr.get_ca_pos(i) for i in range(len(gt_cdr))])
-            pred_x = np.array([pred_cdr.get_ca_pos(i) for i in range(len(pred_cdr))])
-            results[f'RMSD(CA) CDR{cdr}'] = compute_rmsd(gt_x, pred_x, aligned=True)
-            results[f'RMSD(CA) CDR{cdr} aligned'] = compute_rmsd(gt_x, pred_x, aligned=False)
+    cdrs_for_rmsd = ['H3'] if cdr_type is None else cdr_type
+    for cdr in cdrs_for_rmsd:
+        gt_cdr, pred_cdr = ref_cplx.get_cdr(cdr), mod_cplx.get_cdr(cdr)
+        gt_x = np.array([gt_cdr.get_ca_pos(i) for i in range(len(gt_cdr))])
+        pred_x = np.array([pred_cdr.get_ca_pos(i) for i in range(len(pred_cdr))])
+        results[f'RMSD(CA) CDR{cdr}'] = compute_rmsd(gt_x, pred_x, aligned=True)
+        results[f'RMSD(CA) CDR{cdr} aligned'] = compute_rmsd(gt_x, pred_x, aligned=False)
 
     # 3. TMscore
     results['TMscore'] = tm_score(mod_cplx.antibody, ref_cplx.antibody)
