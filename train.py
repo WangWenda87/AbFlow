@@ -54,6 +54,14 @@ def parse():
     parser.add_argument('--n_layers', type=int, default=3, help='Number of layers')
     parser.add_argument('--iter_round', type=int, default=3, help='Number of iterations for generation')
     parser.add_argument('--num_verts', type=int, default=50, help='Number of surface verts per epitope residue')
+    parser.add_argument('--sigma_min', type=float, default=0.01,
+                        help='Terminal standard deviation of the conditional FM path')
+    parser.add_argument('--flow_weight', type=float, default=1.0,
+                        help='Weight of the coordinate flow-matching objective')
+    parser.add_argument('--sequence_flow_weight', type=float, default=1.0,
+                        help='Weight of the sequence flow-matching objective')
+    parser.add_argument('--time_embed_dim', type=int, default=32,
+                        help='Dimension of the Fourier flow-time embedding')
 
     # isMEANOpt related
     parser.add_argument('--seq_warmup', type=int, default=0, help='Number of epochs before starting training sequence')
@@ -103,7 +111,11 @@ def main(args):
                    fix_channel_weights=args.fix_channel_weights,
                    pred_edge_dist=not args.no_pred_edge_dist,
                    keep_memory=not args.no_memory,
-                   cdr_type=args.cdr, paratope=args.paratope)
+                   cdr_type=args.cdr, paratope=args.paratope,
+                   sigma_min=args.sigma_min,
+                   flow_weight=args.flow_weight,
+                   sequence_flow_weight=args.sequence_flow_weight,
+                   time_embed_dim=args.time_embed_dim)
     elif args.model_type == 'AbFlowStruct':
         from trainer import AbFlowTrainer as Trainer
         from models import AbFlowStructModel

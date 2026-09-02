@@ -45,7 +45,13 @@ class AbFlowTrainer(Trainer):
         return ratio
 
     def share_step(self, batch, batch_idx, val=False):
-        loss, seq_detail, structure_detail, dock_detail, pdev_detail = self.model(**batch)
+        model_output = self.model(**batch)
+        if len(model_output) == 6:
+            (loss, seq_detail, structure_detail, dock_detail, pdev_detail,
+             flow_detail) = model_output
+        else:
+            loss, seq_detail, structure_detail, dock_detail, pdev_detail = model_output
+            flow_detail = None
         snll, aar = seq_detail
         struct_loss, xloss, bond_loss, sc_bond_loss = structure_detail
         dock_loss, interface_loss, ed_loss, r_ed_losses = dock_detail
@@ -68,6 +74,12 @@ class AbFlowTrainer(Trainer):
         self.log(f'Dock/EDLoss/{log_type}', ed_loss, batch_idx, val)
         for i, l in enumerate(r_ed_losses):
             self.log(f'Dock/edloss{i}/{log_type}', l, batch_idx, val)
+
+        if flow_detail is not None:
+            flow_loss, coordinate_flow_loss, sequence_flow_loss = flow_detail
+            self.log(f'Flow/Loss/{log_type}', flow_loss, batch_idx, val)
+            self.log(f'Flow/CoordinateLoss/{log_type}', coordinate_flow_loss, batch_idx, val)
+            self.log(f'Flow/SequenceLoss/{log_type}', sequence_flow_loss, batch_idx, val)
 
         if pdev_loss is not None:
             self.log(f'PDev/PDevLoss/{log_type}', pdev_loss, batch_idx, val)

@@ -24,7 +24,9 @@ class AbFlowModel(nn.Module):
                  n_layers=3, iter_round=3, dropout=0.1, 
                  pep_seq=True, pep_struct=True, struct_only=False,
                  backbone_only=False, fix_channel_weights=False, pred_edge_dist=True,
-                 keep_memory=True, cdr_type='H3', paratope='H3', relative_position=False) -> None:
+                 keep_memory=True, cdr_type='H3', paratope='H3', relative_position=False,
+                 sigma_min=0.01, flow_weight=1.0, sequence_flow_weight=1.0,
+                 time_embed_dim=32) -> None:
         super().__init__()
         self.mask_id = mask_id
         self.num_classes = num_classes
@@ -45,6 +47,19 @@ class AbFlowModel(nn.Module):
             n_channel = 4
         self.cdr_type = cdr_type
         self.paratope = paratope
+        self.sigma_min = sigma_min
+        self.flow_weight = flow_weight
+        self.sequence_flow_weight = sequence_flow_weight
+
+        if time_embed_dim % 2 != 0:
+            raise ValueError('time_embed_dim must be even')
+        time_frequencies = 2.0 ** torch.arange(time_embed_dim // 2, dtype=torch.float)
+        self.register_buffer('time_frequencies', time_frequencies)
+        self.time_mlp = nn.Sequential(
+            nn.Linear(time_embed_dim, embed_size),
+            nn.SiLU(),
+            nn.Linear(embed_size, embed_size)
+        )
 
         atom_embed_size = embed_size // 4
         self.aa_feature = SeparatedAminoAcidFeature(
@@ -88,6 +103,15 @@ class AbFlowModel(nn.Module):
                 nn.Linear(hidden_size, hidden_size),
                 nn.SiLU(),
                 nn.Linear(hidden_size, self.num_classes)
+            )
+            # The continuous sequence state contains the 20 amino-acid
+            # categories and the special states up to and including [MASK].
+            self.sequence_state_dim = self.mask_id + 1
+            self.ffn_sequence_velocity = nn.Sequential(
+                nn.SiLU(),
+                nn.Linear(hidden_size, hidden_size),
+                nn.SiLU(),
+                nn.Linear(hidden_size, self.sequence_state_dim)
             )
         else:
             self.prmsd_ffn = nn.Sequential(
@@ -159,30 +183,61 @@ class AbFlowModel(nn.Module):
             X0_aligned: [N, n_channel, 3] 经过旋转和排序后的X0
         """
         from scipy.optimize import linear_sum_assignment
-        # 1. 先计算最优旋转
-        X0_flat = X0.reshape(-1, 3)
-        target_X_flat = target_X.reshape(-1, 3)
+        # Align the backbone atoms first.  The subsequent assignment is at
+        # residue level so atom identities within a residue are preserved.
+        X0_flat = X0[:, :4].reshape(-1, 3)
+        target_X_flat = target_X[:, :4].reshape(-1, 3)
         _, R, t = kabsch_torch(X0_flat, target_X_flat)
         X0_rotated = torch.matmul(X0, R.T) + t
         
-        # 2. 计算最优排序 (使用匈牙利算法)
-        cost_matrix = torch.cdist(X0_rotated.reshape(-1, 3), target_X.reshape(-1, 3))
-        cost_matrix = cost_matrix.reshape(X0.shape[0], X0.shape[1], -1)  # [N, n_channel, N*n_channel]
-        cost_matrix = cost_matrix.reshape(X0.shape[0]*X0.shape[1], -1)  # [N*n_channel, N*n_channel]
+        # Match residues using their C-alpha positions.  source_for_target[j]
+        # gives the source residue assigned to target residue j.
+        cost_matrix = torch.cdist(X0_rotated[:, 1], target_X[:, 1])
+        source, target = linear_sum_assignment(cost_matrix.detach().cpu().numpy())
+        source_for_target = torch.empty(X0.shape[0], dtype=torch.long, device=X0.device)
+        source_for_target[torch.as_tensor(target, device=X0.device)] = torch.as_tensor(
+            source, device=X0.device)
+        X0_aligned = X0_rotated[source_for_target]
         
-        # 使用匈牙利算法找最优匹配
-        perm = linear_sum_assignment(cost_matrix.cpu().numpy())[1]
-        perm = torch.from_numpy(perm).to(X0.device)
-        
-        # 应用旋转和排序
-        X0_aligned = X0_rotated.reshape(-1, 3)[perm].reshape(X0.shape)
-        
-        return R, perm, X0_aligned
+        return R, source_for_target, X0_aligned
+
+    @torch.no_grad()
+    def align_interface_batch(self, X0, S0, target_X, interface_batch_id):
+        """Apply OT alignment independently to every complex in a batch."""
+        aligned_X = torch.empty_like(X0)
+        aligned_S = torch.empty_like(S0)
+        batch_size = int(interface_batch_id.max().item()) + 1
+        for batch_idx in range(batch_size):
+            mask = interface_batch_id == batch_idx
+            _, source_for_target, batch_X = self.optimal_alignment(
+                X0[mask], target_X[mask])
+            aligned_X[mask] = batch_X
+            aligned_S[mask] = S0[mask][source_for_target]
+        return aligned_X, aligned_S
+
+    def time_embedding(self, flow_t, batch_id, dtype):
+        """Return a Fourier time embedding for every residue node."""
+        if not torch.is_tensor(flow_t):
+            flow_t = torch.tensor(flow_t, device=batch_id.device, dtype=dtype)
+        flow_t = flow_t.to(device=batch_id.device, dtype=dtype)
+        if flow_t.ndim == 0 or flow_t.numel() == 1:
+            node_t = flow_t.reshape(1).expand(batch_id.shape[0])
+        elif flow_t.numel() == int(batch_id.max().item()) + 1:
+            node_t = flow_t.reshape(-1)[batch_id]
+        elif flow_t.numel() == batch_id.shape[0]:
+            node_t = flow_t.reshape(-1)
+        else:
+            raise ValueError('flow_t must be scalar, per-complex, or per-node')
+
+        angles = 2 * math.pi * node_t.unsqueeze(-1) * self.time_frequencies.to(dtype)
+        embedding = torch.cat([torch.sin(angles), torch.cos(angles)], dim=-1)
+        return self.time_mlp(embedding)
         
 
     def message_passing(self, X, S, residue_pos, interface_X, surf, paratope_mask, batch_id, t, memory_H=None, smooth_prob=None, smooth_mask=None):
         # embeddings, hidden state, (internal edges, external edges), (A : c * d, w : c * 1)
         H_0, (ctx_edges, inter_edges), (atom_embeddings, atom_weights) = self.aa_feature(X, S, batch_id, self.k_neighbors, residue_pos, smooth_prob=smooth_prob, smooth_mask=smooth_mask)
+        H_0 = H_0 + self.time_embedding(t, batch_id, H_0.dtype)
 
         if not self.keep_memory:
             memory_H = None
@@ -251,8 +306,9 @@ class AbFlowModel(nn.Module):
 
         interface_X = pred_local_X[local_is_ab]
         pred_logits = None if self.struct_only else self.ffn_residue(H)
+        pred_sequence_velocity = None if self.struct_only else self.ffn_sequence_velocity(H)
 
-        return pred_logits, pred_X, interface_X, H, p_edge_dist  # [N, num_classes], [N, n_channel, 3], [Ncdr, n_channel, 3], [N, hidden_size]
+        return pred_logits, pred_sequence_velocity, pred_X, interface_X, H, p_edge_dist  # [N, num_classes], [N, sequence_state_dim], [N, n_channel, 3], [Ncdr, n_channel, 3], [N, hidden_size]
     
     @torch.no_grad()
     def init_interface(self, X, S, paratope_mask, batch_id, init_noise=None):
@@ -329,12 +385,17 @@ class AbFlowModel(nn.Module):
         is_binding = dist <= self.bind_dist_cutoff
         return is_binding
     
-    def _forward(self, X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, template, lengths, init_noise=None):
+    def _forward(self, X, S, cmask, smask, paratope_mask, X_pep, S_pep,
+                 surface, residue_pos, template, lengths, init_noise=None,
+                 flow_X=None, flow_S_probs=None, flow_t=None):
         
         batch_id = self.batch_constants['batch_id']
-        # print(batch_id[paratope_mask].shape, residue_pos[paratope_mask].shape)
-        
-        # print(X.shape, S.shape, cmask.shape, smask.shape, paratope_mask.shape, X_pep.shape, S_pep.shape, template.shape)
+        interface_batch_id = self.batch_constants['interface_batch_id']
+
+        # The full-antibody tensors encode the conditional context.  The
+        # local flow state is supplied independently through flow_X and
+        # flow_S_probs so it cannot be overwritten by context initialization.
+        X, S = X.clone(), S.clone()
 
         # mask sequence and initialize coordinates with template
         X, S = self.init_mask(X, S, cmask, smask, template)
@@ -350,22 +411,37 @@ class AbFlowModel(nn.Module):
         # update center
         X = self.aa_feature.update_global_coordinates(X, S)
 
-        # prepare initial interface
-        interface_X, interface_S = self.init_interface(X, S, paratope_mask, batch_id, init_noise)
-        # initial interface is replaced by peptide
-        # interface_X = X[paratope_mask]
+        if flow_X is None:
+            interface_X, _ = self.init_interface(
+                X, S, paratope_mask, batch_id, init_noise)
+        else:
+            # flow_X is expressed in the original Cartesian frame.  The local
+            # shadow interface uses the antigen-centred normalized frame.
+            interface_X = flow_X - self.normalizer.ag_centers[
+                interface_batch_id].unsqueeze(1)
+            interface_X = self.normalizer.normalize(interface_X)
+
+        if flow_t is None:
+            flow_t = torch.zeros(
+                int(self.batch_constants['batch_size'].item()),
+                device=X.device, dtype=X.dtype)
 
         # sequence and structure loss
-        r_pred_S_logits, pred_S_dist, = [], None
+        r_pred_S_logits, r_pred_S_velocity = [], []
+        pred_S_dist = flow_S_probs
+        smooth_mask = paratope_mask if flow_S_probs is not None else smask
         r_interface_X = [interface_X.clone()]  # init
         r_edge_dist = []
         memory_H = None
         # message passing
-        for t in range(self.round):
-            pred_S_logits, pred_X, interface_X, H, edge_dist = self.message_passing(X, S, residue_pos, interface_X, surface, paratope_mask, batch_id, t, memory_H, pred_S_dist, smask)
+        for round_idx in range(self.round):
+            pred_S_logits, pred_S_velocity, pred_X, interface_X, H, edge_dist = self.message_passing(
+                X, S, residue_pos, interface_X, surface, paratope_mask,
+                batch_id, flow_t, memory_H, pred_S_dist, smooth_mask)
             memory_H = H
             r_interface_X.append(interface_X.clone())
             r_pred_S_logits.append((pred_S_logits, smask))
+            r_pred_S_velocity.append(pred_S_velocity)
             r_edge_dist.append(edge_dist)
             # 1. update X
             X = X.clone()
@@ -375,12 +451,11 @@ class AbFlowModel(nn.Module):
             if not self.struct_only:
                 # 2. update S
                 S = S.clone()
-                if t == self.round - 1:
+                if round_idx == self.round - 1:
                     S[smask] = torch.argmax(pred_S_logits[smask], dim=-1)
                 else:
                     pred_S_dist = torch.softmax(pred_S_logits[smask], dim=-1)
-
-        interface_batch_id = self.batch_constants['interface_batch_id']
+                    smooth_mask = smask
 
         if self.struct_only:
             # predicted rmsd
@@ -398,7 +473,8 @@ class AbFlowModel(nn.Module):
         self.normalizer.clear_cache()
 
 
-        return H, S, r_pred_S_logits, pred_X, r_interface_X,  r_edge_dist, prmsd
+        return (H, S, r_pred_S_logits, r_pred_S_velocity, pred_X,
+                r_interface_X, r_edge_dist, prmsd)
 
     def forward(self, X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, template, lengths, xloss_mask, context_ratio=0):
         '''
@@ -414,6 +490,8 @@ class AbFlowModel(nn.Module):
         # prepare constants
         self._prepare_batch_constants(S, paratope_mask, lengths)
         batch_id = self.batch_constants['batch_id']
+        interface_batch_id = self.batch_constants['interface_batch_id']
+        batch_size = int(self.batch_constants['batch_size'].item())
 
         # provide some ground truth for annealing sequence training
         if context_ratio > 0:
@@ -422,17 +500,35 @@ class AbFlowModel(nn.Module):
         
         gt_interface_X, gt_interface_S = true_X[paratope_mask], true_S[paratope_mask]
         interface_X, interface_S = self.init_interface(X, S, paratope_mask, batch_id)
-        R, perm, interface_X_aligned = self.optimal_alignment(interface_X, gt_interface_X)
-        interface_S_aligned = interface_S[torch.unique(perm // interface_X.shape[1])]
-        
-        t = torch.rand(1, device=X.device)
-        Xt = (1-t) * interface_X_aligned + t * gt_interface_X
-        St = (1-t) * interface_S_aligned + t * gt_interface_S
-        X[paratope_mask] = Xt.to(X.dtype)
-        S[paratope_mask] = St.to(S.dtype)
+        interface_X_aligned, interface_S_aligned = self.align_interface_batch(
+            interface_X, interface_S, gt_interface_X, interface_batch_id)
+
+        # Sample one flow time per complex and construct the OT conditional
+        # path from Equation (5) of the original method.
+        flow_t = torch.rand(batch_size, device=X.device, dtype=X.dtype)
+        interface_t = flow_t[interface_batch_id].view(-1, 1, 1)
+        sigma_t = 1.0 - (1.0 - self.sigma_min) * interface_t
+        Xt = sigma_t * interface_X_aligned + interface_t * gt_interface_X
+
+        if self.struct_only:
+            St = None
+            target_sequence_velocity = None
+        else:
+            q0 = F.one_hot(
+                torch.full_like(interface_S_aligned, self.mask_id),
+                num_classes=self.sequence_state_dim).to(X.dtype)
+            q1 = F.one_hot(
+                gt_interface_S, num_classes=self.sequence_state_dim).to(X.dtype)
+            sequence_t = flow_t[interface_batch_id].unsqueeze(-1)
+            St = (1.0 - sequence_t) * q0 + sequence_t * q1
+            target_sequence_velocity = q1 - q0
 
         # get results
-        H, pred_S, r_pred_S_logits, pred_X, r_interface_X, r_edge_dist, prmsd = self._forward(X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, template, lengths)
+        (H, pred_S, r_pred_S_logits, r_pred_S_velocity, pred_X,
+         r_interface_X, r_edge_dist, prmsd) = self._forward(
+            X, S, cmask, smask, paratope_mask, X_pep, S_pep,
+            surface, residue_pos, template, lengths,
+            flow_X=Xt, flow_S_probs=St, flow_t=flow_t)
 
         # sequence negtive log likelihood
         snll, total = 0, 0
@@ -440,7 +536,7 @@ class AbFlowModel(nn.Module):
             for logits, mask in r_pred_S_logits:
                 snll = snll + F.cross_entropy(logits[mask], true_S[mask], reduction='sum')
                 total = total + mask.sum()
-            snll = snll / total
+            snll = snll / total.clamp_min(1)
 
         # structure loss
         struct_loss, struct_loss_details, bb_rmsd, ops = self.protein_feature.structure_loss(pred_X, true_X, true_S, cmask, batch_id, xloss_mask, self.aa_feature)
@@ -450,17 +546,28 @@ class AbFlowModel(nn.Module):
         # 1. interface loss (shadow paratope)
         interface_atom_pos = self.aa_feature._construct_atom_pos(true_S[paratope_mask])
         interface_atom_mask = interface_atom_pos != self.aa_feature.atom_pos_pad_idx
+        predicted_velocity = r_interface_X[-1] - r_interface_X[0]
+        predicted_endpoint = ((1.0 - self.sigma_min) * r_interface_X[0]
+                              + sigma_t * predicted_velocity)
         interface_loss = F.smooth_l1_loss(
-            r_interface_X[-1][interface_atom_mask],
+            predicted_endpoint[interface_atom_mask],
             gt_interface_X[interface_atom_mask])
 
-        # flow loss
-        dX = r_interface_X[-1][interface_atom_mask] - interface_X_aligned[interface_atom_mask]
-        dS = pred_S[paratope_mask]
-        true_vx = gt_interface_X[interface_atom_mask] - interface_X_aligned[interface_atom_mask]
-        true_vh = gt_interface_S.float() - interface_S_aligned.float()
-        # flow_loss = F.smooth_l1_loss(dX, true_vx) + F.smooth_l1_loss(dS, true_vh)
-        flow_loss = 0.01 * F.smooth_l1_loss(dX, true_vx)
+        # Conditional flow-matching loss.  The network displacement is the
+        # predicted instantaneous velocity at the sampled intermediate state.
+        target_velocity = (gt_interface_X
+                           - (1.0 - self.sigma_min) * interface_X_aligned)
+        coordinate_flow_loss = F.smooth_l1_loss(
+            predicted_velocity[interface_atom_mask],
+            target_velocity[interface_atom_mask])
+        if self.struct_only:
+            sequence_flow_loss = coordinate_flow_loss.new_zeros(())
+        else:
+            predicted_sequence_velocity = r_pred_S_velocity[-1][paratope_mask]
+            sequence_flow_loss = F.smooth_l1_loss(
+                predicted_sequence_velocity, target_sequence_velocity)
+        flow_loss = (self.flow_weight * coordinate_flow_loss
+                     + self.sequence_flow_weight * sequence_flow_loss)
 
 
         # 2. edge dist loss
@@ -484,17 +591,20 @@ class AbFlowModel(nn.Module):
             pdev_loss, prmsd_loss = None, None
 
         # comprehensive loss
-        loss = snll + struct_loss + dock_loss + (0 if pdev_loss is None else pdev_loss)
-        # loss = snll + struct_loss + dock_loss + flow_loss + (0 if pdev_loss is None else pdev_loss)
+        loss = (snll + struct_loss + dock_loss + flow_loss
+                + (0 if pdev_loss is None else pdev_loss))
 
         self._clean_batch_constants()
 
         # AAR
         with torch.no_grad():
             aa_hit = pred_S[smask] == true_S[smask]
-            aar = aa_hit.long().sum() / aa_hit.shape[0]
+            aar = aa_hit.long().sum() / max(aa_hit.shape[0], 1)
 
-        return loss, (snll, aar), (struct_loss, *struct_loss_details), (dock_loss, interface_loss, ed_loss, r_ed_losses), (pdev_loss, prmsd_loss)
+        return (loss, (snll, aar), (struct_loss, *struct_loss_details),
+                (dock_loss, interface_loss, ed_loss, r_ed_losses),
+                (pdev_loss, prmsd_loss),
+                (flow_loss, coordinate_flow_loss, sequence_flow_loss))
 
     def sample(self, X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, template, lengths, n_steps=10, init_noise=None, return_hidden=False):
         
@@ -513,101 +623,93 @@ class AbFlowModel(nn.Module):
         self._prepare_batch_constants(S, paratope_mask, lengths)
 
         batch_id = self.batch_constants['batch_id']
-        batch_size = self.batch_constants['batch_size']
+        batch_size = int(self.batch_constants['batch_size'].item())
         segment_ids = self.batch_constants['segment_ids']
         interface_batch_id = self.batch_constants['interface_batch_id']
         is_ab = segment_ids != self.aa_feature.ag_seg_id
         s_batch_id = batch_id[smask]
-
-        best_metric = torch.ones(batch_size, dtype=torch.float, device=X.device) * 1e10
         interface_cmask = paratope_mask[cmask]
 
-        interface_X, interface_S = self.init_interface(X, S, paratope_mask, batch_id)
+        if n_steps <= 0:
+            raise ValueError('n_steps must be positive')
+
+        interface_X, _ = self.init_interface(
+            X, S, paratope_mask, batch_id, init_noise)
         dt = 1.0 / n_steps
         Xt = interface_X.clone()
-        St = interface_S.clone()
+        if self.struct_only:
+            sequence_state = None
+        else:
+            sequence_state = F.one_hot(
+                torch.full((Xt.shape[0],), self.mask_id,
+                           device=X.device, dtype=torch.long),
+                num_classes=self.sequence_state_dim).to(X.dtype)
         
         for i in range(n_steps):
-            t = torch.tensor(i * dt, device=X.device)
-            
-            # 更新当前状态
-            X_cur = X.clone()
-            S_cur = S.clone()
-            X_cur[paratope_mask] = Xt
-            S_cur[paratope_mask] = St
-            
-            # 使用message passing获取速度场
-            H, pred_S, r_pred_S_logits, pred_X, r_interface_X, r_edge_dist, prmsd = self._forward(
-                X_cur, S_cur, cmask, smask, paratope_mask, 
-                X_pep, S_pep, surface, residue_pos, template, lengths
-            )
+            flow_t = torch.tensor(i * dt, device=X.device, dtype=X.dtype)
 
-            # 计算速度场
-            dX = r_interface_X[-1] - Xt
+            (H, pred_S, r_pred_S_logits, r_pred_S_velocity, pred_X,
+             r_interface_X, r_edge_dist, prmsd) = self._forward(
+                X, S, cmask, smask, paratope_mask, X_pep, S_pep,
+                surface, residue_pos, template, lengths,
+                flow_X=Xt, flow_S_probs=sequence_state, flow_t=flow_t)
+
+            # Explicit Euler integration of the learned velocity field.
+            coordinate_velocity = r_interface_X[-1] - r_interface_X[0]
+            Xt = Xt + dt * coordinate_velocity
             if not self.struct_only:
-                cur_logits = r_pred_S_logits[-1][0][paratope_mask]
-                # 1. 数值稳定性处理
-                cur_logits = cur_logits - cur_logits.max(dim=-1, keepdim=True)[0]
-                # 2. 计算当前概率
-                cur_probs = F.softmax(cur_logits, dim=-1)
-                # 3. 计算序列的速度场
-                dS = cur_probs - F.one_hot(St, num_classes=self.num_classes).float()
-                
-            # Euler步进
-            Xt = Xt + dX * dt
-            if not self.struct_only:
-                next_probs = F.one_hot(St, num_classes=self.num_classes).float() + dS * dt
-                # 确保数值稳定性
-                next_probs = next_probs.clamp(min=1e-6)
-                next_probs = next_probs / next_probs.sum(dim=-1, keepdim=True)
-                # 从更新后的概率分布中采样
-                St = torch.multinomial(next_probs, num_samples=1).squeeze(-1)
-        
-        X[paratope_mask] = Xt
-        S[paratope_mask] = St
-            
-        n_tries = 10 if self.struct_only else 1
-        for i in range(n_tries):
-        
-            # generate
-            H, pred_S, r_pred_S_logits, pred_X, r_interface_X, _, prmsd = self._forward(X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, template, lengths, init_noise)
+                sequence_velocity = r_pred_S_velocity[-1][paratope_mask]
+                sequence_state = sequence_state + dt * sequence_velocity
+                # Numerical projection keeps the integrated state on the
+                # probability simplex without discrete resampling at each step.
+                sequence_state = sequence_state.clamp_min(0)
+                sequence_state = sequence_state / sequence_state.sum(
+                    dim=-1, keepdim=True).clamp_min(1e-8)
 
-            # PPL or PRMSD
-            if not self.struct_only:
-                S_logits = r_pred_S_logits[-1][0][smask]
-                S_probs = torch.max(torch.softmax(S_logits, dim=-1), dim=-1)[0]
-                nlls = -torch.log(S_probs)
-                metric = scatter_mean(nlls, s_batch_id)  # [batch_size]
-            else:
-                metric = scatter_mean(prmsd[interface_cmask], interface_batch_id)  # [batch_size]
+        # A final network evaluation propagates the transported local state to
+        # the complete antibody.  It is not an additional ODE step.
+        final_t = torch.tensor(1.0, device=X.device, dtype=X.dtype)
+        (H, pred_S, r_pred_S_logits, r_pred_S_velocity, pred_X,
+         r_interface_X, _, prmsd) = self._forward(
+            X, S, cmask, smask, paratope_mask, X_pep, S_pep,
+            surface, residue_pos, template, lengths,
+            flow_X=Xt, flow_S_probs=sequence_state, flow_t=final_t)
 
-            update = metric < best_metric
-            cupdate = cmask & update[batch_id]
-            supdate = smask & update[batch_id]
-            # update metric history
-            best_metric[update] = metric[update]
+        gen_X[cmask] = pred_X[cmask]
+        if not self.struct_only:
+            gen_S[smask] = pred_S[smask]
+            amino_acid_probs = sequence_state[:, :self.num_classes]
+            amino_acid_mass = amino_acid_probs.sum(dim=-1, keepdim=True)
+            normalized_amino_acid_probs = amino_acid_probs / amino_acid_mass.clamp_min(1e-8)
+            uniform_amino_acid_probs = torch.full_like(
+                amino_acid_probs, 1.0 / self.num_classes)
+            amino_acid_probs = torch.where(
+                amino_acid_mass > 1e-8,
+                normalized_amino_acid_probs,
+                uniform_amino_acid_probs)
+            sampled_interface_S = torch.multinomial(
+                amino_acid_probs, num_samples=1).squeeze(-1)
+            gen_S[paratope_mask] = sampled_interface_S
 
-            # 1. set generated part
-            gen_X[cupdate] = pred_X[cupdate]
-            if not self.struct_only:
-                gen_S[supdate] = pred_S[supdate]
-        
-            interface_X = r_interface_X[-1]
-            # 2. align by cdr
-            for i in range(batch_size):
-                if not update[i]:
-                    continue
-                # 1. align CDRH3
-                is_cur_graph = batch_id == i
-                cdrh3_cur_graph = torch.logical_and(is_cur_graph, paratope_mask)
-                ori_cdr = gen_X[cdrh3_cur_graph][:, :4]  # backbone
-                pred_cdr = interface_X[interface_batch_id == i][:, :4]
-                _, R, t = kabsch_torch(ori_cdr.reshape(-1, 3), pred_cdr.reshape(-1, 3))
+            S_logits = r_pred_S_logits[-1][0][smask]
+            S_probs = torch.max(torch.softmax(S_logits, dim=-1), dim=-1)[0]
+            metric = scatter_mean(-torch.log(S_probs.clamp_min(1e-8)), s_batch_id)
+        else:
+            metric = scatter_mean(
+                prmsd[interface_cmask], interface_batch_id)
 
-                # 2. tranform antibody
-                is_cur_ab = is_cur_graph & is_ab
-                ab_X = torch.matmul(gen_X[is_cur_ab], R.T) + t
-                gen_X[is_cur_ab] = ab_X
+        # Rigidly place the generated antibody at the transported interface,
+        # then retain the ODE state itself for the paratope coordinates.
+        for batch_idx in range(batch_size):
+            is_cur_graph = batch_id == batch_idx
+            current_paratope = torch.logical_and(is_cur_graph, paratope_mask)
+            generated_cdr = gen_X[current_paratope][:, :4]
+            transported_cdr = Xt[interface_batch_id == batch_idx][:, :4]
+            _, R, translation = kabsch_torch(
+                generated_cdr.reshape(-1, 3), transported_cdr.reshape(-1, 3))
+            is_cur_ab = is_cur_graph & is_ab
+            gen_X[is_cur_ab] = torch.matmul(gen_X[is_cur_ab], R.T) + translation
+        gen_X[paratope_mask] = Xt
 
         self._clean_batch_constants()
 
@@ -627,7 +729,7 @@ class AbFlowModel(nn.Module):
         self._prepare_batch_constants(S, paratope_mask, lengths)
 
         batch_id = self.batch_constants['batch_id']
-        batch_size = self.batch_constants['batch_size']
+        batch_size = int(self.batch_constants['batch_size'].item())
         segment_ids = self.batch_constants['segment_ids']
         interface_batch_id = self.batch_constants['interface_batch_id']
         is_ab = segment_ids != self.aa_feature.ag_seg_id
@@ -640,7 +742,10 @@ class AbFlowModel(nn.Module):
         for i in range(n_tries):
         
             # generate
-            H, pred_S, r_pred_S_logits, pred_X, r_interface_X, _, prmsd = self._forward(X, S, cmask, smask, paratope_mask, X_pep, S_pep, surface, residue_pos, template, lengths, init_noise)
+            (H, pred_S, r_pred_S_logits, _, pred_X,
+             r_interface_X, _, prmsd) = self._forward(
+                X, S, cmask, smask, paratope_mask, X_pep, S_pep,
+                surface, residue_pos, template, lengths, init_noise)
 
             # PPL or PRMSD
             if not self.struct_only:

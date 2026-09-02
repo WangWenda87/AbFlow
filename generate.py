@@ -117,7 +117,7 @@ def generate(args):
                     batch[k] = batch[k].to(device)
             # generate
             del batch['xloss_mask']
-            X, S, pmets = model.sample(**batch)
+            X, S, pmets = model.sample(**batch, n_steps=args.n_steps)
 
             X, S, pmets = X.tolist(), S.tolist(), pmets.tolist()
             X_list, S_list = [], []
@@ -173,6 +173,8 @@ def parse():
 
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of workers to use')
+    parser.add_argument('--n_steps', type=int, default=10,
+                        help='Number of Euler steps for flow sampling')
 
     parser.add_argument('--gpu', type=int, default=-1, help='GPU to use, -1 for cpu')
     parser.add_argument('--pep_file', type=str, nargs='?', const='all_data/RAbD/test.pkl', default=None)
